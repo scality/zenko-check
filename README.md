@@ -1,61 +1,71 @@
 # zenko-check
 
-## Usage
+zenko-check is a command-line utility to check the configuration of a
+production Zenko deployment and diagnose problems in it.
 
-zenko-check is a command line utility to check configuration and diagnose problems with a production Zenko deployment.
+## Pre-Requisites
 
-## Prerequisites
-
-zenko-check requires [helm](https://github.com/kubernetes/helm) to be installed and be configured to be able to access tiller running inside kubernetes.
+zenko-check requires a [Helm](https://github.com/kubernetes/helm) installation
+that is configured to access Tiller running inside Kubernetes.
 
 ## Installation
 
-zenko-check can be installed directly from Pypi using pip:
+zenko-check can be installed directly from PyPi using Pip:
 
 ```
 pip install zenko-check
 ```
 
-a docker images is also provided for convenience
+A Docker image is also provided for convenience.
 
 ```
 docker pull zenko/zenko-check:latest
 docker run -it zenko/zenko-check help
 ```
 
-## Global Options and Flags
+## Syntax
+
+zenko-check commands conform to the following syntax:
 
 ```
---mongo 		Override the default mongo connection string (host:port)
---helm-release, -r	The helm release name Zenko was installed under.
+zenko-check <global option> <subcommand> <-flag or --verbose_option> <optional target>
 ```
 
-## Subcommands
-
-### checkup
-###### Run all checks and tests (warning this could take a while)
-
-### k8s
-###### Checks kubernetes related configuration
-
+### Global Options
 
 ```
---check-services, -c 	Attempt to connect to defined services and report their status.
+    --mongo  Override the default Mongo connection string (host:port)
+-r, --helm-release   The Helm release name under which Zenko was installed.
+```
+
+### Subcommands
+
+#### checkup
+
+Run all checks and tests (may take a while).
+
+#### k8s
+
+Check Kubernetes-related configuration.
+
+```
+-c, --check-services 	Attempt to connect to defined services and report their status.
 
 ```
 
-### orbit
-###### Check overlay configuration applied via orbit
+#### orbit
 
-### backends
-###### Check existence and configuration of backend buckets
+Check overlay configuration applied via Orbit.
 
+#### backends
 
+Check existence and configuration of backend buckets.
 
 ```
--d, --deep  	Enable deep checking. Check every Zenko bucket for its backing bucket
-            	(same as zenko-check buckets)
+-d, --deep 	Enable deep checking. Check every Zenko bucket for its backing bucket
+          	(same as zenko-check buckets)
 ```
 
-### buckets
-###### Check every Zenko bucket for its respective backend bucket
+#### buckets
+
+Check every Zenko bucket for its backend bucket.
