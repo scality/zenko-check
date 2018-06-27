@@ -108,7 +108,8 @@ class Pod:
 
 	@property
 	def repr(self):
-		return self.name, self._ready, self._restarts, self._age, (self._status, 'green' if self._status == 'Running' else 'red')
+		fg = 'green' if self._status == 'Running' or self.status == 'Completed' else 'red'
+		return self.name, self._ready, self._restarts, self._age, (self._status, fg)
 
 	@classmethod
 	def headings(cls):
@@ -173,7 +174,7 @@ class Status:
 			services = [s for s in services if not s[4] == ('UP', 'green')]
 			if not len(services):
 				services = [(('NO PROBLEMS', 'green'),)]
-			pods = [p for p in pods if not p[4] == ('Running', 'green')]
+			pods = [p for p in pods if not p[4] == ('Running', 'green') and not p[4] == ('Completed', 'green')]
 			if not len(pods):
 				pods = [(('NO PROBLEMS', 'green'),)]
 		services = [self._services[0].headings()] + services if len(services) > 1 else services
