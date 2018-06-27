@@ -2,13 +2,17 @@ import click
 from collections import namedtuple
 from .helm import Status as HelmStatus
 from .orbit import OverlayConfig
-from .print import print_sections
+from .print import print_sections, print_header, print_error
 from . import __version__ as zenko_check_version
 from .check import check_backends, check_buckets
 from .bucket import UserBuckets
-
+from .util import NO_PROBLEMS, MONGO_BASE_HOST
 import sys
 from pprint import pprint
+from . import error
+from .log import Log
+
+_log = Log('cli')
 
 ZCConf = namedtuple('ZCConf', ('mongo', 'helm_release', 'output', 'verbose'))
 NO_HELM_REL = ['help', 'version']
@@ -28,6 +32,8 @@ def zenko_check(ctx, **kwargs):
 			raise click.UsageError('Missing option "--helm-release" / "-r"', ctx=ctx)
 	if 'output' not in kwargs:
 		kwargs['output'] = None
+	if kwargs.get('mongo') and not ':' in kwargs.get('mongo'):
+		kwargs['mongo'] = '%s:27017'%kwargs.get('mongo')
 	ctx.obj = ZCConf(**kwargs)
 
 #help
@@ -47,15 +53,22 @@ def help(ctx, command):
 # version
 @zenko_check.command(help='Print version')
 def version():
-	click.echo('zenko-check', nl = False)
+	click.echo('zcheck', nl = False)
 	click.secho('\tv%s'%zenko_check_version, fg='green')
 
 # k8s
 @zenko_check.command(help = 'Checks related to the kubernetes cluster')
 @click.pass_obj
-@click.option('--check-services', '-c', is_flag = True, help = 'Attempt to connect to defined services and report their status')
-def k8s(conf, check_services):
-	hs = HelmStatus(conf.helm_release, check_services=check_services)
+# @click.option('--check-services', '-c', is_flag = True, help = 'Attempt to connect to defined services and report their status')
+def k8s(conf):
+	try:
+		hs = HelmStatus(conf.helm_release, verbose = conf.verbose)
+	except error.RequiredBinaryException as e:
+		_log.error(str(e))
+		_log.exception(e)
+		print_error(str(e))
+		sys.exit(1)
+
 	hs.pull_status()
 	print_sections(hs.repr, width=100, file=conf.output)
 
@@ -63,7 +76,13 @@ def k8s(conf, check_services):
 @zenko_check.command(help = "Check relating to Orbit's configuration")
 @click.pass_obj
 def orbit(conf):
-	oc = OverlayConfig(helm_release = conf.helm_release, mongo = conf.mongo, verbose=conf.verbose)
+	try:
+		oc = OverlayConfig(helm_release = conf.helm_release, mongo = conf.mongo, verbose=conf.verbose)
+	except error.ZCheckBaseException as e:
+		_log.error(str(e))
+		_log.exception(e)
+		print_error(str(e))
+		sys.exit(1)
 	print_sections(oc.repr, file=conf.output)
 
 # backend
@@ -72,8 +91,17 @@ def orbit(conf):
 @click.pass_context
 def backends(ctx, deep):
 	conf = ctx.obj
-	oc = OverlayConfig(helm_release = conf.helm_release, mongo = conf.mongo, verbose=conf.verbose)
-	print_sections({'backends':list(check_backends(oc))})
+	try:
+		oc = OverlayConfig(helm_release = conf.helm_release, mongo = conf.mongo, verbose=conf.verbose)
+	except error.ZCheckBaseException as e:
+		_log.error(str(e))
+		_log.exception(e)
+		print_error(str(e))
+		sys.exit(1)
+	checked = list(check_backends(oc, conf.verbose))
+	if len(checked) == 1:
+		checked = NO_PROBLEMS
+	print_sections({'backends': checked})
 	if deep:
 		ctx.invoke(buckets)
 
@@ -81,9 +109,18 @@ def backends(ctx, deep):
 @zenko_check.command(help = 'Check every Zenko bucket for its respective backing bucket')
 @click.pass_obj
 def buckets(conf):
-	oc = OverlayConfig(helm_release = conf.helm_release, mongo = conf.mongo, verbose=conf.verbose)
+	try:
+		oc = OverlayConfig(helm_release = conf.helm_release, mongo = conf.mongo, verbose=conf.verbose)
+	except error.ZCheckBaseException as e:
+		_log.error(str(e))
+		_log.exception(e)
+		print_error(str(e))
+		sys.exit(1)
 	ub = UserBuckets(helm_release=conf.helm_release, mongo = conf.mongo)
-	print_sections({'buckets': list(check_buckets(oc, ub.buckets))})
+	checked = list(check_buckets(oc, ub.buckets, conf.verbose))
+	if len(checked) == 1:
+		checked = NO_PROBLEMS
+	print_sections({'buckets': checked})
 
 # Do EVERYTHING!!
 @zenko_check.command(help = 'Run all checks and tests')
@@ -92,6 +129,7 @@ def checkup(ctx):
 	if not ctx.obj.helm_release:
 		raise click.UsageError('Missing option "--helm-release" / "-r"', ctx=ctx)
 	ctx.invoke(orbit)
-	ctx.invoke(k8s, check_services = True)
+	print_header('')
+	ctx.invoke(k8s)
 	ctx.invoke(backends)
 	ctx.invoke(buckets)

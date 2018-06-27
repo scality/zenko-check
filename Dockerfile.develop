@@ -17,6 +17,6 @@ COPY . /app
 RUN cd /app \
 	&& python setup.py install
 
-ENTRYPOINT [ "zenko-check" ]
+ENTRYPOINT [ "zcheck" ]
 
 CMD ["help"]

@@ -1,5 +1,6 @@
 import logging
 from logging import CRITICAL, ERROR, WARNING, INFO, DEBUG
+
 levels = dict(
 		critical = logging.CRITICAL,
 		error = logging.ERROR,
@@ -7,6 +8,8 @@ levels = dict(
 		info = logging.INFO,
 		debug = logging.DEBUG
 		)
+
+LOGGERS = dict()
 
 class Whitelist(logging.Filter):
 	def __init__(self, *whitelist):
@@ -49,10 +52,10 @@ def setupLogging(name = None, level = logging.DEBUG, whitelist = [], blacklist =
 	elif blacklist:
 		for handler in logging.root.handlers:
 			handler.addFilter(Blacklist(*blacklist))
-	baseLogger = rootLogger.getChild(name if name else 'app')
+	name = name if name else 'zcheck'
+	baseLogger = rootLogger.getChild(name)
+	LOGGERS[''] = baseLogger
 	return baseLogger
-
-BASE_LOGGER = setupLogging()
 
 # return a nested child of root
 # levels are indicated in name by "."
@@ -64,7 +67,7 @@ def get_logger(root, name):
 	return get_logger(root.getChild(lvl.pop(0)), '.'.join(lvl))
 
 def Log(name):
-	baselogger = BASE_LOGGER if BASE_LOGGER else logging.getLogger('root')
+	baselogger = LOGGERS.get('', logging.getLogger())
 	return get_logger(baselogger, name)
 
 def log_on_error(logger, target_handler = None, flush_lvl = logging.ERROR, capacity = 250):

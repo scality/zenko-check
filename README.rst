@@ -1,40 +1,40 @@
-zenko-check
+zcheck
 ===========
 
-zenko-check is a command-line utility to check the configuration of a
+zcheck is a command-line utility to check the configuration of a
 production Zenko deployment and diagnose problems in it.
 
 Pre-Requisites
 --------------
 
-zenko-check requires a `Helm <https://github.com/kubernetes/helm>`__
+zcheck requires a `Helm <https://github.com/kubernetes/helm>`__
 installation that is configured to access Tiller running inside
 Kubernetes.
 
 Installation
 ------------
 
-zenko-check can be installed directly from PyPi using Pip:
+zcheck can be installed directly from PyPi using Pip:
 
 ::
 
-    pip install zenko-check
+    pip install zcheck
 
 A Docker image is also provided for convenience.
 
 ::
 
-    docker pull zenko/zenko-check:latest
-    docker run -it zenko/zenko-check help
+    docker pull zenko/zcheck:latest
+    docker run -it zenko/zcheck help
 
 Syntax
 ------
 
-zenko-check commands conform to the following syntax:
+zcheck commands conform to the following syntax:
 
 ::
 
-    zenko-check <global option> <subcommand> <-flag or --verbose_option> <optional target>
+    zcheck <global option> <subcommand> <-flag or --verbose_option> <optional target>
 
 Global Options
 ~~~~~~~~~~~~~~
@@ -74,7 +74,7 @@ Check existence and configuration of backend buckets.
 ::
 
     -d, --deep  Enable deep checking. Check every Zenko bucket for its backing bucket
-                (same as zenko-check buckets)
+                (same as zcheck buckets)
 
 buckets
 ^^^^^^^

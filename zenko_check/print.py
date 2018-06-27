@@ -1,14 +1,15 @@
 import os
 from .format import strip_color, color_text, find_col_widths
 from functools import partial
-import click
+import sys
 from .util import mark_last
 import re
 from math import ceil
+import click
 ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 
 
-TERM_WIDTH, TERM_HEIGHT = os.get_terminal_size()
+TERM_WIDTH, TERM_HEIGHT = os.get_terminal_size() if sys.stdin.isatty() else (120, 24)
 TERM_WIDTH = min(TERM_WIDTH, 120)
 
 control_chars = dict.fromkeys(range(32))
@@ -34,7 +35,8 @@ def print_line(row, widths, ellipsize = False, align = 'left', **kwargs):
 	# click.echo(tmpl.format(*colored), **kwargs)
 
 def print_header(s, pad = '=', fg = 'cyan', **kwargs):
-	line = '{0:{fill}^{width}}'.format(' %s '%s.upper(), fill = pad, width=TERM_WIDTH)
+	tmpl = ' %s ' if s else '%s'
+	line = '{0:{fill}^{width}}'.format(tmpl%s.upper(), fill = pad, width=TERM_WIDTH)
 	click.secho('\n' + line + '\n', fg = fg, **kwargs)
 
 def print_section(section, **kwargs):
@@ -50,3 +52,9 @@ def print_sections(sections, **kwargs):
 	for heading, section in sections.items():
 		print_header(heading)
 		print_section(section)
+
+def  print_error(msg):
+	click.secho(msg, fg='red')
+
+def print_info(msg):
+	click.secho(msg, fg='cyan')

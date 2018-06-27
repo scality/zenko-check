@@ -11,6 +11,10 @@ from collections import namedtuple
 import base64
 from .s3 import BackendWrapper
 from .util import MONGO_BASE_HOST
+from . import error
+from .log import Log
+
+_log = Log('orbit')
 
 BACKEND_TYPES = {
 	"location-mem-v1" : 'MEM',
@@ -80,9 +84,15 @@ class OverlayConfig:
 		return self._host
 
 	def _pull_priv_key(self):
+		if not 'metadata' in self._client.database_names():
+			raise error.DBNotFoundException('metadata')
 		db = self._client['metadata']
+		if not 'PENSIEVE' in db.collection_names():
+					raise error.CollectionNotFoundException('PENSIEVE', 'metadata')
 		col = db['PENSIEVE']
 		auth = col.find_one({'_id': 'auth/zenko/remote-management-token'})
+		if auth is None:
+			raise NoOverlayPrivateKeyException
 		return RSA.importKey(auth['value']['privateKey'])
 
 	def _build_cypher(self):
@@ -102,27 +112,23 @@ class OverlayConfig:
 		if not self._pulled:
 			try:
 				if not 'metadata' in self._client.database_names():
-					# log_err('"metadata" collection not found in mongo!')
-					sys.exit(1)
+					raise error.DBNotFoundException('metadata')
 				db = self._client['metadata']
 				if not 'PENSIEVE' in db.collection_names():
-					# log_err('No collection named PENSIEVE in metadata')
-					sys.exit(1)
+					raise error.CollectionNotFoundException('PENSIEVE', 'metadata')
 				col = db['PENSIEVE']
 				version = col.find_one({'_id':'configuration/overlay-version'})
 				if version is None:
-					# log_err('No overlay configuration version found!')
-					sys.exit(1)
+					raise error.NoOverlayConfigException
 				config = col.find_one({'_id': 'configuration/overlay/%s'%version['value']})
 				if config is None:
-					# log_err('No overlay configuration found!')
-					sys.exit(1)
+					raise error.InvalidOverlayConfigVersionException('"%s"'%version['value'])
 				self._pulled = True
 				self._parse_config(config['value'])
 				return True, None
 			except errors.ServerSelectionTimeoutError:
-				# log_err('Unable to connect to mongo!')
-				sys.exit(1)
+				_log.error('Failed to connect to mongodb')
+				raise error.MongoConnectionError(self.mongo)
 
 	def _parse_config(self, config):
 		self._instance_id = config['instanceId']
@@ -174,7 +180,7 @@ class OverlayConfig:
 	def headings(self, section):
 		headings = getattr(self, '_%s_headings'%section, None)
 		if headings is None:
-			raise Exception('No headings fund for %s!'%section)
+			raise Exception('No headings found for %s!'%section)
 		return tuple((k.upper(), self._heading_color) for k in headings)
 
 	@property
@@ -214,11 +220,3 @@ class OverlayConfig:
 				details['accessKey'], self.decrypt(details['secretKey']),
 				details.get('endpoint', 'None'), details['bucketName']
 			)
-
-	def check_backends(self):
-		yield self.headings('backend_check')
-		for backend in self.backends:
-			wr = BackendWrapper(backend)
-			exists = ('True', 'green') if wr.exists else ('False', 'red')
-			mine = ('True', 'green') if wr.mine else ('False', 'red')
-			yield backend.name, backend.bucket, exists, mine

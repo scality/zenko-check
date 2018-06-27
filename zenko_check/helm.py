@@ -1,16 +1,19 @@
-from .util import WatchProcess, check_cmd
+from .util import WatchProcess, check_cmd, NO_PROBLEMS
 import subprocess
 import socket
 import click
+from .error import RequiredBinaryException
 
 class Service:
 	_headings = ('HOSTNAME', 'CLUSTER IP', 'PORTS', 'AGE', 'STATUS')
 	_heading_color = 'cyan'
 
-	def __init__(self, line, check = False):
+	def __init__(self, line, check = False, verbose = False):
 		self._ports = []
 		self._check = check
+		self._verbose = verbose
 		self._parse_line(line)
+		self._status = None
 
 	def _parse_line(self, line):
 		parts = [p for p in line.split() if p]
@@ -20,6 +23,12 @@ class Service:
 			port, proto = p.split('/')
 			self._ports.append((port, proto))
 		self._age = parts[5]
+
+	@property
+	def status(self):
+		if self._status is None:
+			self._status = self.check()
+		return self._status
 
 	@property
 	def endpoints(self):
@@ -45,22 +54,21 @@ class Service:
 
 	@property
 	def repr(self):
-		if self._check:
-			return self._host, self._ip, self.pports, self._age, ('UP', 'green') if self.check() else ('DOWN', 'red')
-		return self._host, self._ip, self.pports, self._age
+		return self._host, self._ip, self.pports, self._age, ('UP', 'green') if self.status else ('DOWN', 'red')
 
 	def headings(self):
-		if self._check:
-			return tuple((c, Service._heading_color) for c in Service._headings)
-		return tuple((c, Service._heading_color) for c in Service._headings[:-1])
+		return tuple((c, Service._heading_color) for c in Service._headings)
 
 	def check(self):
 		up = True
-		for ep in self.endpoints:
+		for host, port in self.endpoints:
+			if self._ip == 'None':
+				up = False
 			try:
-				s = socket.create_connection(ep)
+				s = socket.create_connection((host, port))
 			except Exception as e:
-				click.secho('Failed to connect to tcp://%s:%s with error %s'%(*ep, e), fg='red')
+				if self._verbose:
+					click.secho('Failed to connect to tcp://%s:%s with error %s'%(host, port, e), fg='red')
 				up = False
 		return up
 
@@ -109,13 +117,14 @@ class Pod:
 
 
 class Status:
-	def __init__(self, release, check_pods = False, check_services = False):
+	def __init__(self, release, check_services = False, verbose = False):
 		self._release = release
 		self._services = []
 		self._pods = []
-		self._check_pods = check_pods
 		self._check_services = check_services
-		check_cmd('helm')
+		self._verbose = verbose
+		if not check_cmd('helm'):
+			raise RequiredBinaryException('helm')
 
 	def _helm_status(self):
 		proc = WatchProcess('helm status %s'%self._release, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
@@ -126,7 +135,7 @@ class Status:
 
 	def _parse_services(self, lines):
 		for line in lines:
-			self._services.append(Service(line, check = self._check_services))
+			self._services.append(Service(line, check = self._check_services, verbose = self._verbose))
 
 	def _parse_pods(self, lines):
 		for line in lines:
@@ -152,6 +161,21 @@ class Status:
 
 	@property
 	def repr(self):
-		services = [self._services[0].headings()] + [s.repr for s in self._services]
-		pods = [Pod.headings()] + [p.repr for p in self._pods]
+		if not self._verbose:
+			with click.progressbar(self._services, label="Checking services") as service_list:
+				services = [s.repr for s in service_list]
+			with click.progressbar(self._pods, label = 'Checking pods    ') as pod_list:
+				pods = [p.repr for p in pod_list]
+		else:
+			pods = [p.repr for p in self._pods]
+			services = [s.repr for s in self._services]
+		if not self._verbose:
+			services = [s for s in services if not s[4] == ('UP', 'green')]
+			if not len(services):
+				services = [(('NO PROBLEMS', 'green'),)]
+			pods = [p for p in pods if not p[4] == ('Running', 'green')]
+			if not len(pods):
+				pods = [(('NO PROBLEMS', 'green'),)]
+		services = [self._services[0].headings()] + services if len(services) > 1 else services
+		pods = [Pod.headings()] + pods if len(pods) > 1 else pods
 		return dict(services=services, pods=pods)

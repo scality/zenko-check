@@ -6,6 +6,7 @@ import shlex
 import click
 
 MONGO_BASE_HOST = 'mongodb-replicaset'
+NO_PROBLEMS = [(('NO PROBLEMS', 'green'),)]
 
 def which(name):
 	for path in os.getenv("PATH").split(os.path.pathsep):
@@ -19,11 +20,12 @@ def complain_no_cmd(cmd, exit = True):
 You must have %s installed to use this tool!
 Please make sure %s is installed and available in you PATH'''%tuple([cmd]*3),
 	fg='red', bold=True)
-	sys.exit(1)
 
 def check_cmd(cmd):
 	if not which(cmd):
 		complain_no_cmd(cmd)
+		return False
+	return True
 
 class WatchedProcess(Thread):
 	"""

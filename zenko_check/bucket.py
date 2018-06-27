@@ -23,6 +23,8 @@ class UserBuckets:
 				sys.exit(1)
 			db = self._client['metadata']
 			if not '__usersbucket' in db.collection_names():
+				# No buckets have been created or somethings wrong!
+				return []
 				sys.exit(1)
 			col = db['__usersbucket']
 			for bucket in col.find():
