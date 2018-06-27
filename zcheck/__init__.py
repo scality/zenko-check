@@ -1,7 +1,7 @@
 __version__ = '0.1.1'
 
 
-from .cli import zenko_check
+from .cli import zcheck
 def entry():
 	from . import log
 
@@ -10,4 +10,4 @@ def entry():
 		blacklist = [
 			'azure.storage.common.storageclient'
 		])
-	zenko_check()
+	zcheck()

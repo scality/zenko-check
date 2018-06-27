@@ -60,7 +60,7 @@ setup(
     # For a discussion on single-sourcing the version across setup.py and the
     # project code, see
     # https://packaging.python.org/en/latest/single_source_version.html
-    version=find_version('zenko_check','__init__.py'),  # Required
+    version=find_version('zcheck','__init__.py'),  # Required
 
     # This is a one-line description or tagline of what your project does. This
     # corresponds to the "Summary" metadata field:
@@ -183,7 +183,7 @@ setup(
     # executes the function `main` from this package when invoked:
     entry_points={  # Optional
         'console_scripts': [
-            'zcheck=zenko_check:entry',
+            'zcheck=zcheck:entry',
         ],
     },
 )

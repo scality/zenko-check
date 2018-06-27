@@ -1,5 +1,5 @@
 #!/usr/bin/env python
 
-from zenko_check import zenko_check
+from zcheck import zcheck
 
-zenko_check()
+zcheck()
