@@ -38,3 +38,5 @@ docker push zenko/zcheck:latest
 
 echo "Uploading to PyPi"
 twine upload dist/*
+
+git push --tags
