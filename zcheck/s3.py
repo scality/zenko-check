@@ -113,6 +113,8 @@ def build_client(backend):
 	sesh = BUILDERS.get(backend.type, _build_aws)(backend)
 	if backend.endpoint == 'None':
 		endpoint = None
+	elif backend.type == 'GCP':
+		endpoint = 'https://storage.googleapis.com'
 	else:
 		endpoint = 'https://%s'%backend.endpoint
 	return sesh.resource('s3', endpoint_url=endpoint)
@@ -125,7 +127,7 @@ class BackendWrapper:
 		if not self.builtin:
 			self._client = build_client(backend)
 		self._mine = None
-
+		self._exists = None
 	@property
 	def name(self):
 		return self._backend.name
@@ -138,9 +140,15 @@ class BackendWrapper:
 	def exists(self):
 		if self.builtin:
 			return True
+		if self._backend.type == 'SCALITY RING SPD':
+			self._mine = None
+			return None
+		if self._exists is not None:
+			return self._exists
 		try:
 			self._client.meta.client.head_bucket(Bucket = self._backend.bucket)
 			self._mine = True
+			self._exists = True
 			return True
 		except (botocore.exceptions.ClientError, AzureClientError) as e:
 			error_code = int(e.response['Error']['Code'])
@@ -154,6 +162,8 @@ class BackendWrapper:
 	def mine(self):
 		if self.builtin:
 			return True
+		if self._backend.type == 'GCP' or self._backend.type == 'SCALITY RING SPD':
+			return None
 		if self._mine is None:
 			if self.exists:
 				return self._mine
@@ -163,6 +173,10 @@ class BackendWrapper:
 	@property
 	def versioned(self):
 		pass
+
+	@property
+	def transient(self):
+		return self._backend.transient
 
 def build_backends(backends):
 	for backend in backends:

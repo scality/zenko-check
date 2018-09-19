@@ -53,8 +53,8 @@ def print_sections(sections, **kwargs):
 		print_header(heading)
 		print_section(section)
 
-def  print_error(msg):
+def print_error(msg):
 	click.secho(msg, fg='red')
 
-def print_info(msg):
-	click.secho(msg, fg='cyan')
+def print_info(msg, fg = 'cyan'):
+	click.secho(msg, fg=fg)

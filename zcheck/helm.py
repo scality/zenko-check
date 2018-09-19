@@ -3,6 +3,7 @@ import subprocess
 import socket
 import click
 from .error import RequiredBinaryException
+from .print import pad, print_info, TERM_WIDTH
 
 class Service:
 	_headings = ('HOSTNAME', 'CLUSTER IP', 'PORTS', 'AGE', 'STATUS')
@@ -109,7 +110,12 @@ class Pod:
 	@property
 	def repr(self):
 		fg = 'green' if self._status == 'Running' or self.status == 'Completed' else 'red'
-		return self.name, self._ready, self._restarts, self._age, (self._status, fg)
+		restarts_color = 'green'
+		if int(self._restarts) >= 5:
+			restarts_color = 'yellow'
+		if int(self._restarts) >= 10:
+			restarts_color = 'red'
+		return self.name, self._ready, (self._restarts, restarts_color), self._age, (self._status, fg)
 
 	@classmethod
 	def headings(cls):
@@ -118,17 +124,22 @@ class Pod:
 
 
 class Status:
-	def __init__(self, release, check_services = False, verbose = False):
+	def __init__(self, release, check_services = False, verbose = False, host = None):
 		self._release = release
 		self._services = []
 		self._pods = []
 		self._check_services = check_services
+		self._host = host
+		if self._host is None:
+			self._host = ''
+		else:
+			self._host = '--host %s'%self._host
 		self._verbose = verbose
 		if not check_cmd('helm'):
 			raise RequiredBinaryException('helm')
 
 	def _helm_status(self):
-		proc = WatchProcess('helm status %s'%self._release, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+		proc = WatchProcess('helm %s status %s'%(self._host, self._release), stdout = subprocess.PIPE, stderr = subprocess.STDOUT, env=dict(KUBECONFIG=''))
 		proc.wait()
 		raw = proc().stdout.readlines()
 		lines = [x.decode('utf-8').strip() for x in raw]
@@ -158,7 +169,10 @@ class Status:
 
 	def pull_status(self):
 		lines = self._helm_status()
+		if len(lines) == 1 and 'Error' in lines[0]:
+			return False
 		self._parse(lines)
+		return True
 
 	@property
 	def repr(self):
@@ -174,6 +188,10 @@ class Status:
 			services = [s for s in services if not s[4] == ('UP', 'green')]
 			if not len(services):
 				services = [(('NO PROBLEMS', 'green'),)]
+			# if len(services) == len(self._services):
+			# 	click.echo('\n')
+			# 	print_info(pad('Note: If executed outside the Zenko cluster, service checks ALWAYS return DOWN', TERM_WIDTH, align='center'), fg='yellow')
+				# services = [(('Note: If executed outside the Zenko cluster service checks ALWAYS return DOWN', 'yellow'),)] + services
 			pods = [p for p in pods if not p[4] == ('Running', 'green') and not p[4] == ('Completed', 'green')]
 			if not len(pods):
 				pods = [(('NO PROBLEMS', 'green'),)]

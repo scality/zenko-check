@@ -24,11 +24,14 @@ BACKEND_TYPES = {
 	"location-gcp-v1": 'GCP',
 	"location-b2-v1": 'BACKBLAZE B2',
 	"location-wasabi-v1": 'WASABI',
-	"location-do-spaces-v1": 'DIGITAL OCEAN'
+	"location-do-spaces-v1": 'DIGITAL OCEAN',
+	'location-scality-ring-s3-v1': 'SCALITY RING S3C',
+	'location-scality-sproxyd-v1': 'SCALITY RING SPD',
+	'location-ceph-radosgw-s3-v1': 'CEPH'
 }
 
 User = namedtuple('User', ['name', 'access_key', 'secret_key'])
-Backend = namedtuple('Backend', ['name', 'type', 'access_key', 'secret_key', 'endpoint', 'bucket'])
+Backend = namedtuple('Backend', ['name', 'type', 'access_key', 'secret_key', 'endpoint', 'bucket', 'transient'])
 
 class ReplicationStream:
 	_headings = ('name', 'source', 'prefix', 'destinations', 'enabled')
@@ -48,7 +51,7 @@ class ReplicationStream:
 	@property
 	def repr(self):
 		color = 'green' if self._enabled else 'red'
-		return self._name, self._source, self._prefix if self._prefix else 'No Prefix', self.destinations, (str(self._enabled), color)
+		return self._name, self._source, self._prefix if self._prefix else '----', self.destinations, (str(self._enabled), color)
 
 	@classmethod
 	def headings(cls):
@@ -58,9 +61,9 @@ class OverlayConfig:
 	_heading_color = 'cyan'
 	_instance_headings = ('instance id',)
 	_user_headings = ('username', 'account type', 'access key', 'canonicalId')
-	_location_headings = ('name', 'type', 'access key', 'bucket', 'endpoint')
+	_location_headings = ('name', 'type', 'access key', 'bucket', 'transient', 'endpoint')
 	_endpoint_headings = ('hostname', 'location', 'builtin')
-	_backend_check_headings = ('backend', 'bucket', 'exists', 'owned')
+	_backend_check_headings = ('backend', 'bucket', 'transient', 'exists', 'owned')
 
 	def __init__(self, helm_release = None, mongo = None, verbose = False):
 		if mongo is None:
@@ -151,14 +154,15 @@ class OverlayConfig:
 		locations = []
 		for loc in self._locations:
 			details = loc.get('details', None)
+			transient = ('True', 'green') if loc.get('isTransient', False) else ('False', 'red')
 			if details:
-				ak = details.get('accessKey', '--')
-				ak = ak if self._verbose else '%s...%s'%(ak[:6], ak[-5:])
-				ep = details.get('endpoint', '--')
-				bucket = details.get('bucketName', '--')
+				ak = details.get('accessKey', '----')
+				ak = ak if self._verbose or ak == '----' else '%s...%s'%(ak[:6], ak[-5:])
+				ep = details.get('endpoint', '----')
+				bucket = details.get('bucketName', '----')
 			else:
-				ep, ak, bucket = '--', '--', '--'
-			locations.append((loc['name'], BACKEND_TYPES.get(loc['locationType'], 'UNKNOWN'), ak, bucket, ep))
+				ep, ak, bucket = '----', '----', '----'
+			locations.append((loc['name'], BACKEND_TYPES.get(loc['locationType'], 'UNKNOWN'), ak, bucket, transient, ep))
 		return locations
 
 	@property
@@ -169,8 +173,8 @@ class OverlayConfig:
 	def _repr_endpoints(self):
 		eps = []
 		for ep in self._endpoints:
-			builtin = ('True', 'magenta') if ep['isBuiltin'] else 'False'
-			eps.append((ep['hostname'], ep['locationName'], str(ep['isBuiltin'])))
+			# builtin = ('True', 'magenta') if ep.get('isBuiltin', False) else 'False'
+			eps.append((ep['hostname'], ep['locationName'], str('isBuiltin' in ep)))
 		return eps
 
 	@property
@@ -208,15 +212,22 @@ class OverlayConfig:
 	def backends(self):
 		self._pull_config()
 		for backend in self._locations:
+			transient = backend.get('isTransient', False)
 			if not 'details' in backend or not backend.get('details'):
 				yield Backend(
 					backend['name'], BACKEND_TYPES.get(backend['locationType'], 'UNKNOWN'),
-					'--', '--', '--', '--'
+					'----', '----', '----', '----', transient
 				)
 				continue
 			details = backend['details']
-			yield Backend(
-				backend['name'], BACKEND_TYPES.get(backend['locationType'], 'UNKNOWN'),
-				details['accessKey'], self.decrypt(details['secretKey']),
-				details.get('endpoint', 'None'), details['bucketName']
-			)
+			if backend['locationType'] == 'location-file-v1' or backend['locationType'] == 'location-scality-sproxyd-v1':
+				yield Backend(
+					backend['name'], BACKEND_TYPES.get(backend['locationType'], 'UNKNOWN'),
+					'----', '----', details.get('endpoint', 'None'), '----', transient
+				)
+			else:
+				yield Backend(
+					backend['name'], BACKEND_TYPES.get(backend['locationType'], 'UNKNOWN'),
+					details['accessKey'], self.decrypt(details['secretKey']),
+					details.get('endpoint', 'None'), details['bucketName'], transient
+				)

@@ -21,10 +21,11 @@ echo "Removing old releases"
 rm -rf dist/
 
 echo "Building sdist and bdist"
-python setup.py sdist bdist
+python setup.py sdist
 
 echo "Building zenko/zcheck:$VER"
 echo "Will also tag zenko/zcheck:$MAJOR, zenko/zcheck:$MAJOR.$MINOR, and zenko/zcheck:latest"
+
 docker build -t zenko/zcheck:$VER .
 docker tag zenko/zcheck:$VER zenko/zcheck:$MAJOR
 docker tag zenko/zcheck:$VER zenko/zcheck:$MAJOR.$MINOR
@@ -39,4 +40,6 @@ docker push zenko/zcheck:latest
 echo "Uploading to PyPi"
 twine upload dist/*
 
+echo "Pushing to repo"
+git push
 git push --tags

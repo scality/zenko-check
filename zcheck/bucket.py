@@ -92,7 +92,7 @@ class ZenkoBucket:
 	@property
 	def transient(self):
 		self._pull_info()
-		return str(self._transient)
+		return ('True', 'green') if self._transient else ('False', 'red')
 
 	@property
 	def deleted(self):

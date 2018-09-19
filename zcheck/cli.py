@@ -1,28 +1,35 @@
-import click
-from collections import namedtuple
-from .helm import Status as HelmStatus
-from .orbit import OverlayConfig
-from .print import print_sections, print_header, print_error
-from . import __version__ as zcheck_version
-from .check import check_backends, check_buckets
-from .bucket import UserBuckets
-from .util import NO_PROBLEMS, MONGO_BASE_HOST
 import sys
+from collections import namedtuple
 from pprint import pprint
+
+import click
+
+from . import __version__ as zcheck_version
 from . import error
+from .bucket import UserBuckets
+from .check import check_backends, check_buckets
+from .forward import auto_forward
+from .helm import Status as HelmStatus
 from .log import Log
+from .orbit import OverlayConfig
+from .print import print_error, print_header, print_sections, pad, TERM_WIDTH
+from .util import MONGO_BASE_HOST, NO_PROBLEMS
 
 _log = Log('cli')
 
-ZCConf = namedtuple('ZCConf', ('mongo', 'helm_release', 'output', 'verbose'))
+ZCConf = namedtuple('ZCConf', ('mongo', 'helm_release', 'output', 'verbose', 'auto_forward', 'helm_host'))
 NO_HELM_REL = ['help', 'version']
 REQ_HELM_REL = ['k8s']
+
+
 
 # Root
 @click.group()
 @click.option('--mongo', default = None, type = str, help = 'Override the default mongo host:port')
 @click.option('--helm-release', '-r', type = str, help ='The release name helm was installed under')
+@click.option('--helm-host', type = str, default = None, help = 'Override default tiller host')
 @click.option('--output', '-o', type = click.File(mode='w'))
+@click.option('--auto-forward', is_flag = True, help='With a correctly configured kubectl, auto-forward ports need for cluster introspection. (Overrides --mongo & --helm-host')
 @click.option('--verbose', '-v', is_flag=True, help="Enable verbose output, WARNING: This will print your access keys to the terminal or file!")
 @click.pass_context
 def zcheck(ctx, **kwargs):
@@ -32,8 +39,13 @@ def zcheck(ctx, **kwargs):
 			raise click.UsageError('Missing option "--helm-release" / "-r"', ctx=ctx)
 	if 'output' not in kwargs:
 		kwargs['output'] = None
+	if kwargs.get('helm_host') and not ':' in kwargs.get('helm_host'):
+		kwargs['helm_host'] = '%s:44134'%kwargs.get('helm_host')
 	if kwargs.get('mongo') and not ':' in kwargs.get('mongo'):
 		kwargs['mongo'] = '%s:27017'%kwargs.get('mongo')
+	if kwargs.get('auto_forward'):
+		kwargs['mongo'] = 'localhost:40420'
+		kwargs['helm_host'] = 'localhost:40421'
 	ctx.obj = ZCConf(**kwargs)
 
 #help
@@ -57,24 +69,30 @@ def version():
 	click.secho('\tv%s'%zcheck_version, fg='green')
 
 # k8s
-@zcheck.command(help = 'Checks related to the kubernetes cluster')
+@zcheck.command('k8s', help = 'Checks related to the kubernetes cluster')
 @click.pass_obj
+@auto_forward(tiller = True)
 # @click.option('--check-services', '-c', is_flag = True, help = 'Attempt to connect to defined services and report their status')
 def k8s(conf):
 	try:
-		hs = HelmStatus(conf.helm_release, verbose = conf.verbose)
+		hs = HelmStatus(conf.helm_release, verbose = conf.verbose, host  = conf.helm_host)
 	except error.RequiredBinaryException as e:
 		_log.error(str(e))
 		_log.exception(e)
 		print_error(str(e))
 		sys.exit(1)
 
-	hs.pull_status()
-	print_sections(hs.repr, width=100, file=conf.output)
+	if hs.pull_status():
+		click.echo('\n')
+		print_info(pad('Note: If executed outside the Zenko cluster, service checks ALWAYS return DOWN', TERM_WIDTH, align='center'), fg='yellow')
+		print_sections(hs.repr, width=100, file=conf.output)
+	else:
+		print_error('Unable to retrieve helm status!')
 
 # orbit
-@zcheck.command(help = "Check relating to Orbit's configuration")
+@zcheck.command('orbit', help = "Checks related to Orbit's configuration")
 @click.pass_obj
+@auto_forward(mongo = True)
 def orbit(conf):
 	try:
 		oc = OverlayConfig(helm_release = conf.helm_release, mongo = conf.mongo, verbose=conf.verbose)
@@ -86,9 +104,10 @@ def orbit(conf):
 	print_sections(oc.repr, file=conf.output)
 
 # backend
-@zcheck.command(help = 'Check backend buckets for existence and configuration')
+@zcheck.command('backends', help = 'Check backend buckets for existence and configuration')
 @click.option('--deep', '-d', is_flag = True, help = 'Enable deep checking. Check every zenko bucket for its respective backend bucket')
 @click.pass_context
+@auto_forward(mongo = True, use_ctx = True)
 def backends(ctx, deep):
 	conf = ctx.obj
 	try:
@@ -106,8 +125,9 @@ def backends(ctx, deep):
 		ctx.invoke(buckets)
 
 # Check zenko buckets
-@zcheck.command(help = 'Check every Zenko bucket for its respective backing bucket')
+@zcheck.command('buckets', help = 'Check every Zenko bucket for its respective backing bucket')
 @click.pass_obj
+@auto_forward(mongo = True)
 def buckets(conf):
 	try:
 		oc = OverlayConfig(helm_release = conf.helm_release, mongo = conf.mongo, verbose=conf.verbose)
@@ -123,8 +143,9 @@ def buckets(conf):
 	print_sections({'buckets': checked})
 
 # Do EVERYTHING!!
-@zcheck.command(help = 'Run all checks and tests')
+@zcheck.command('checkup', help = 'Run all checks and tests')
 @click.pass_context
+@auto_forward(mongo = True, use_ctx = True)
 def checkup(ctx):
 	if not ctx.obj.helm_release:
 		raise click.UsageError('Missing option "--helm-release" / "-r"', ctx=ctx)
